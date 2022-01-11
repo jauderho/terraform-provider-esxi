@@ -102,7 +102,7 @@ func readVmx_contents(c *Config, vmid string) (string, error) {
 }
 
 func updateVmx_contents(c *Config, vmid string, iscreate bool, memsize int, numvcpus int,
-	virthwver int, guestos string, virtual_networks [10][3]string, virtual_disks [60][2]string, notes string,
+	virthwver int, guestos string, virtual_networks [10][3]string, boot_firmware string, virtual_disks [60][2]string, notes string,
 	guestinfo map[string]interface{}) error {
 
 	esxiConnInfo := getConnectionInfo(c)
@@ -151,6 +151,11 @@ func updateVmx_contents(c *Config, vmid string, iscreate bool, memsize int, numv
 		regexReplacement = fmt.Sprintf("guestOS = \"%s\"", guestos)
 		vmx_contents = re.ReplaceAllString(vmx_contents, regexReplacement)
 	}
+
+	// modify boot_firmware
+	re := regexp.MustCompile("firmware = \".*\"")
+	regexReplacement = fmt.Sprintf("firmware = \"%s\"", boot_firmware)
+	vmx_contents = re.ReplaceAllString(vmx_contents, regexReplacement)
 
 	// modify annotation
 	if notes != "" {
@@ -239,7 +244,7 @@ func updateVmx_contents(c *Config, vmid string, iscreate bool, memsize int, numv
 
 	//  If this is first time provisioning, delete all the old ethernet configuration.
 	if iscreate == true {
-		log.Printf("[updateVmx_contents] Delete old ethernet configuration\n", i)
+		log.Printf("[updateVmx_contents] Delete old ethernet configuration: %d\n", i)
 		regexReplacement = fmt.Sprintf("")
 		for i = 0; i < 9; i++ {
 			re := regexp.MustCompile(fmt.Sprintf("ethernet%d.*\n", i))

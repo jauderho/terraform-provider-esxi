@@ -18,7 +18,7 @@ import (
 
 func guestCREATE(c *Config, guest_name string, disk_store string,
 	src_path string, resource_pool_name string, strmemsize string, strnumvcpus string, strvirthwver string, guestos string,
-	boot_disk_type string, boot_disk_size string, virtual_networks [10][3]string,
+	boot_disk_type string, boot_disk_size string, virtual_networks [10][3]string, boot_firmware string,
 	virtual_disks [60][2]string, guest_shutdown_timeout int, ovf_properties_timer int, notes string,
 	guestinfo map[string]interface{}, ovf_properties map[string]string) (string, error) {
 
@@ -55,7 +55,7 @@ func guestCREATE(c *Config, guest_name string, disk_store string,
 
 	if vmid != "" {
 		// We don't need to create the VM.   It already exists.
-		fmt.Printf("[guestCREATE] guest %s already exists vmid: \n", guest_name, stdout)
+		fmt.Printf("[guestCREATE] guest %s already exists vmid: %s\n", guest_name, stdout)
 
 		//
 		//   Power off guest if it's powered on.
@@ -141,7 +141,15 @@ func guestCREATE(c *Config, guest_name string, disk_store string,
 				fmt.Sprintf("pciBridge7.functions = \\\"8\\\"\n") +
 				fmt.Sprintf("scsi0:0.present = \\\"TRUE\\\"\n") +
 				fmt.Sprintf("scsi0:0.fileName = \\\"%s.vmdk\\\"\n", guest_name) +
-				fmt.Sprintf("scsi0:0.deviceType = \\\"scsi-hardDisk\\\"\n")
+				fmt.Sprintf("scsi0:0.deviceType = \\\"scsi-hardDisk\\\"\n") +
+				fmt.Sprintf("nvram = \\\"%s.nvram\\\"\n", guest_name)
+		if boot_firmware == "efi" {
+			vmx_contents = vmx_contents +
+				fmt.Sprintf("firmware = \\\"efi\\\"\n")
+		} else if boot_firmware == "bios" {
+			vmx_contents = vmx_contents +
+				fmt.Sprintf("firmware = \\\"bios\\\"\n")
+		}
 		if hasISO == true {
 			vmx_contents = vmx_contents +
 				fmt.Sprintf("ide1:0.present = \\\"TRUE\\\"\n") +
@@ -198,13 +206,14 @@ func guestCREATE(c *Config, guest_name string, disk_store string,
 		if strings.HasPrefix(src_path, "http://") || strings.HasPrefix(src_path, "https://") {
 			log.Printf("[guestCREATE] Source is URL.\n")
 			resp, err := http.Get(src_path)
-			defer resp.Body.Close()
 			if (err != nil) || (resp.StatusCode != 200) {
 				log.Printf("[guestCREATE] URL not accessible: %s\n", src_path)
-				log.Printf("[guestCREATE] URL StatusCode: %s\n", resp.StatusCode)
+				log.Printf("[guestCREATE] URL StatusCode: %d\n", resp.StatusCode)
 				log.Printf("[guestCREATE] URL Error: %s\n", err.Error())
+				defer resp.Body.Close()
 				return "", fmt.Errorf("URL not accessible: %s\n%s", src_path, err.Error())
 			}
+			defer resp.Body.Close()
 		} else if strings.HasPrefix(src_path, "vi://") {
 			log.Printf("[guestCREATE] Source is Guest VM (vi).\n")
 		} else {
@@ -267,20 +276,20 @@ func guestCREATE(c *Config, guest_name string, disk_store string,
 			//  create new batch file
 			file, err := os.Create(ovf_bat.Name())
 			if err != nil {
-				return "", fmt.Errorf("Unable to create %s: %s\n", ovf_bat.Name(), err.Error())
 				defer file.Close()
+				return "", fmt.Errorf("Unable to create %s: %s\n", ovf_bat.Name(), err.Error())
 			}
 
 			_, err = file.WriteString(strings.Replace(ovf_cmd, "%", "%%", -1))
 			if err != nil {
-				return "", fmt.Errorf("Unable to write to %s: %s\n", ovf_bat.Name(), err.Error())
 				defer file.Close()
+				return "", fmt.Errorf("Unable to write to %s: %s\n", ovf_bat.Name(), err.Error())
 			}
 
 			err = file.Close()
 			if err != nil {
-				return "", fmt.Errorf("Unable to close %s: %s\n", ovf_bat.Name(), err.Error())
 				defer file.Close()
+				return "", fmt.Errorf("Unable to close %s: %s\n", ovf_bat.Name(), err.Error())
 			}
 			ovf_cmd = ovf_bat.Name()
 
@@ -353,7 +362,7 @@ func guestCREATE(c *Config, guest_name string, disk_store string,
 	//
 	//  make updates to vmx file
 	//
-	err = updateVmx_contents(c, vmid, true, memsize, numvcpus, virthwver, guestos, virtual_networks, virtual_disks, notes, guestinfo)
+	err = updateVmx_contents(c, vmid, true, memsize, numvcpus, virthwver, guestos, virtual_networks, boot_firmware, virtual_disks, notes, guestinfo)
 	if err != nil {
 		return vmid, fmt.Errorf("Failed to update vmx contents: %s\n", err)
 	}
